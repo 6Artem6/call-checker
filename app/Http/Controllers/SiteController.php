@@ -11,16 +11,19 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use App\Models\{Request, Theme, Instruction, File};
-use App\Http\Requests\{InstructionRequest, RequestRequest};
+use App\Models\{Request, Support, Theme, Instruction, File};
+use App\Http\Requests\{InstructionRequest, RequestRequest, SupportRequest};
 
 class SiteController extends Controller
 {
     /**
      * Главная страница
      */
-    public function index(): Response
+    public function index()
     {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
         return Inertia::render('Site/Index');
     }
 
@@ -45,11 +48,7 @@ class SiteController extends Controller
     public function requestSend(RequestRequest $request): RedirectResponse
     {
         $model = new Request();
-        $theme_list = Theme::getUserSelectList();
-        $request->validate([
-            'upload_files.*' => 'file|mimes:mp3,wav|max:10240', // Ограничения на файлы
-        ]);
-        $data = $request->all();
+        $data = $request->validated();
         $model->fill($data);
         $fileList = $request->file('upload_files');
         $instructionList = $request->input('Instruction', []);
@@ -75,7 +74,7 @@ class SiteController extends Controller
     /**
      * Список файлов
      */
-    public function fileList($id = 0)
+    public function fileList(int $id = 0)
     {
         $request = Request::getUserRecord($id);
         if (!$request) {
@@ -89,7 +88,7 @@ class SiteController extends Controller
     /**
      * Информация о файле
      */
-    public function fileInfo($id = 0)
+    public function fileInfo(int $id = 0)
     {
         $model = File::getViewAnalysisRecord($id);
         if (!$model) {
@@ -117,11 +116,39 @@ class SiteController extends Controller
     }
 
     /**
+     * Отправка запроса в поддержку
+     */
+    public function supportRequest()
+    {
+        $model = new Support;
+
+        return Inertia::render('Site/SupportForm', [
+            'model' => $model
+        ]);
+    }
+
+    /**
+     * Создание инструкции (AJAX)
+     */
+    public function supportSend(SupportRequest $request): JsonResponse
+    {
+        $data = $request->validated();// Получаем только валидированные данные
+
+        // Создаём новую инструкцию
+        $supportRequest = Support::create($data);
+
+        return response()->json([
+            'message' => 'Запрос получен. Скоро свяжемся!',
+            'data'    => $supportRequest,
+        ]);
+    }
+
+    /**
      * Создание инструкции (AJAX)
      */
     public function instructionCreate(InstructionRequest $request): JsonResponse
     {
-        $data = $request->validated(); // Получаем только валидированные данные
+        $data = $request->validated();// Получаем только валидированные данные
 
         // Создаём новую инструкцию
         $instruction = Instruction::create([
@@ -158,7 +185,7 @@ class SiteController extends Controller
     /**
      * Получение файла
      */
-    public function file($id = 0): BinaryFileResponse
+    public function file(int $id = 0): BinaryFileResponse
     {
         $model = File::getUserFile($id);
         if (!$model || !$model->getIsFileExists()) {

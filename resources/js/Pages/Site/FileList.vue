@@ -1,6 +1,6 @@
 <script setup>
-import {ref} from "vue";
-import { usePage } from '@inertiajs/vue3';
+import {onMounted, ref} from "vue";
+import {Head, usePage} from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const page = usePage();
@@ -16,6 +16,8 @@ const formatTime = (time) => {
 
 <template>
     <AuthenticatedLayout>
+        <Head :title="'Просмотр файлов запроса #' + request.request_id" />
+
         <div class="w-full p-6">
             <h1 class="text-2xl text-white font-semibold mb-4">{{ `Просмотр файлов запроса #${request.request_id}` }}</h1>
 

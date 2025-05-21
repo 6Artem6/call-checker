@@ -9,15 +9,16 @@ defineProps({
     },
     placeholder: {
         type: String,
-        default: "Перетащите файлы сюда", // Текст-заполнитель
+        default: "Перетащите аудиофайлы сюда", // Текст-заполнитель
     },
     buttonText: {
         type: String,
-        default: "Выберите файл", // Текст кнопки
+        default: "Выберите аудиофайл", // Текст кнопки
     },
     containerClass: {
         type: String,
-        default: "file flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg", // Классы контейнера
+        default:
+            "file flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-lg", // Классы контейнера
     },
     inputClass: {
         type: String,
@@ -25,12 +26,18 @@ defineProps({
     },
     buttonClass: {
         type: String,
-        default: "mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none", // Классы для кнопки
+        default:
+            "mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none", // Классы для кнопки
     },
 });
 
 const files = ref([]);
 const fileInput = ref(null);
+
+// Проверка типа файла
+const isAudioFile = (file) => {
+    return file.type.startsWith("audio/");
+};
 
 // Обработчик перетаскивания файлов
 const handleDrop = (event) => {
@@ -40,7 +47,11 @@ const handleDrop = (event) => {
 
     if (droppedFiles.length > 0) {
         for (let i = 0; i < droppedFiles.length; i++) {
-            files.value.push(droppedFiles[i]);
+            if (isAudioFile(droppedFiles[i])) {
+                files.value.push(droppedFiles[i]);
+            } else {
+                alert(`Файл "${droppedFiles[i].name}" не является аудиофайлом.`);
+            }
         }
     }
 };
@@ -53,7 +64,11 @@ const handleFileChange = (event) => {
 
     if (selectedFiles.length > 0) {
         for (let i = 0; i < selectedFiles.length; i++) {
-            files.value.push(selectedFiles[i]);
+            if (isAudioFile(selectedFiles[i])) {
+                files.value.push(selectedFiles[i]);
+            } else {
+                alert(`Файл "${selectedFiles[i].name}" не является аудиофайлом.`);
+            }
         }
     }
 };
@@ -131,6 +146,7 @@ const removeFile = (index) => {
         </button>
     </div>
 </template>
+
 
 <style scoped>
 /* Добавьте стили для лучшего отображения области перетаскивания */

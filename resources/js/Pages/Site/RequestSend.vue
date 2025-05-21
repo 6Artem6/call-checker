@@ -1,7 +1,7 @@
 <script setup>
 import axios from "axios";
-import { ref } from "vue";
-import { usePage } from '@inertiajs/vue3';
+import {onMounted, ref} from "vue";
+import {Head, usePage} from '@inertiajs/vue3';
 
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import FileUploader from '@/Components/FileUploader.vue';
@@ -59,12 +59,14 @@ const createInstruction = async () => {
         console.error("Create instruction error:", error);
     }
 };
-
 </script>
 
 <template>
     <AuthenticatedLayout>
+        <Head title="Отправка запроса" />
+
         <div class="w-full md:w-1/2 p-6">
+            <h1 class="text-2xl text-white font-semibold mb-4">Отправка запроса</h1>
 
             <form method="POST" enctype="multipart/form-data" class="space-y-4">
                 <input type="hidden" name="_method" value="POST">

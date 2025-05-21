@@ -1,11 +1,13 @@
 <script setup>
 
 import GuestLayout from '@/Layouts/GuestLayout.vue';
-
+import {onMounted} from "vue";
+import {Head} from "@inertiajs/vue3";
 </script>
 
 <template>
     <GuestLayout>
+        <Head title="Главная страница" />
 
         <div class="site-index">
             <div class="text-center text-white bg-transparent mt-5 mb-5">

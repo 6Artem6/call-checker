@@ -25,13 +25,13 @@ class FileChunk extends Model
     public static function rules(): array
     {
         return [
-            'chunk_id' => 'unique:file_chunk,chunk_id',
-            'start_milliseconds' => 'required|integer',
-            'end_milliseconds' => 'required|integer',
-            'speaker' => 'required|integer',
-            'confidence' => 'required|integer',
-            'file_id' => 'required|integer',
-            'text' => 'required|string',
+            'chunk_id' => ['unique:file_chunk,chunk_id'],
+            'start_milliseconds' => ['required', 'integer'],
+            'end_milliseconds' => ['required', 'integer'],
+            'speaker' => ['required', 'integer'],
+            'confidence' => ['required', 'integer'],
+            'file_id' => ['required', 'integer'],
+            'text' => ['required', 'string'],
         ];
     }
 

@@ -19,8 +19,8 @@ class FileAnalysis extends Model
     public static function rules(): array
     {
         return [
-            'file_id' => 'unique|required|integer',
-            'analysis_data' => 'required|string',
+            'file_id' => ['unique', 'required', 'integer'],
+            'analysis_data' => ['required', 'string'],
         ];
     }
 

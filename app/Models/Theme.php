@@ -6,9 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class Theme extends Model
 {
-    protected $table = 'themes'; // Указание таблицы
-    public $timestamps = false; // Отключение полей created_at/updated_at, если их нет
+    protected $table = 'theme'; // Указание таблицы
     protected $primaryKey = 'theme_id'; // Указание первичного ключа
+    public $timestamps = false; // Отключение полей created_at/updated_at, если их нет
 
     /**
      * Массово заполняемые атрибуты
@@ -24,8 +24,8 @@ class Theme extends Model
     public static function rules()
     {
         return [
-            'theme_id' => 'required|integer|unique:theme,theme_id',
-            'theme_name' => 'required|string|max:64|unique:theme,theme_name',
+            'theme_id' => ['required', 'integer', 'unique:theme,theme_id'],
+            'theme_name' => ['required', 'string', 'max:64', 'unique:theme,theme_name'],
         ];
     }
 

@@ -8,12 +8,9 @@ class RequestFileStatus extends Model
 {
     protected $table = 'request_file_status'; // Имя таблицы
     protected $primaryKey = 'status_id'; // Первичный ключ
-    public $incrementing = true; // Отключение автоинкремента для PK
     protected $fillable = [
         'status_name'
     ]; // Поля для массового заполнения
-
-    public const SCENARIO_CREATE = 'create';
 
     /**
      * Правила валидации
@@ -21,8 +18,8 @@ class RequestFileStatus extends Model
     public static function rules(): array
     {
         return [
-            'status_id' => 'required|unique:request_file_status,status_id',
-            'status_name' => 'required|required:request_file_status,status_name|string|max:32'
+            'status_id' => ['required', 'unique:request_file_status,status_id'],
+            'status_name' => ['required', 'unique:request_file_status,status_name', 'string', 'max:32']
         ];
     }
 

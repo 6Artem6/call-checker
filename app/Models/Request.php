@@ -9,14 +9,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use App\Services\OpenAIAnalysisService;
 use Exception;
 
 /**
- * @property int|null $user_id
- * @property int|null $request_id
- * @property int|null $theme_id
- * @property int|null $status_id
- * @property string|null $request_datetime
+ * @property int $user_id
+ * @property int $request_id
+ * @property int $theme_id
+ * @property int $status_id
+ * @property string $request_datetime
+ * @property File[] $files
+ * @property User $user
+ * @property Theme $theme
+ * @property RequestFileStatus $status
+ * @property RequestInstruction[] $instructions
  */
 class Request extends Model
 {
@@ -33,6 +39,13 @@ class Request extends Model
     protected $hidden = [
         'user_id',
         'status_id',
+    ];
+    protected $casts = [
+        'user_id' => 'integer',
+        'status_id' => 'integer',
+        'request_id' => 'integer',
+        'theme_id' => 'integer',
+        'request_datetime' => 'datetime',
     ];
 
     public $timestamps = false;
@@ -128,12 +141,12 @@ class Request extends Model
         $requests = Request::whereIn('status_id', [
             RequestFileStatus::STATUS_CREATED,
             RequestFileStatus::STATUS_BEGIN_TRANSCRIBE,
-            RequestFileStatus::STATUS_ERROR_TRANSCRIBE,
         ])
             ->with('files') // Загружаем связанные файлы
             ->limit(6) // Ограничиваем количество записей
             ->get();
         foreach ($requests as $request) {
+
             // Если статус "создан", изменяем на "начало транскрипции"
             if ($request->status_id === RequestFileStatus::STATUS_CREATED) {
                 $request->status_id = RequestFileStatus::STATUS_BEGIN_TRANSCRIBE;
@@ -158,6 +171,7 @@ class Request extends Model
                 // Получаем путь к файлу и выполняем транскрипцию
                 $path = $file->getLocalFilePath();
                 [$transcribe_output, $status] = $this->transcribe($path);
+
                 if ($status && !empty($transcribe_output) && is_array($transcribe_output)) {
                     $file->status_id = RequestFileStatus::STATUS_END_TRANSCRIBE;
 
@@ -223,7 +237,7 @@ class Request extends Model
                     'phrases' => $chunk_list
                 ];
                 $analysis_content = json_encode($analysis_data, JSON_UNESCAPED_UNICODE);
-                [$analysis_output, $status] = $this->analysis($analysis_content, $instruction_text);
+                [$analysis_output, $status] = $this->analysisNew($analysis_content, $instruction_text);
                 if (!empty($analysis_output) and $status) {
                     $file->status_id = RequestFileStatus::STATUS_END_ANALYSIS;
                     FileAnalysis::create([
@@ -238,7 +252,7 @@ class Request extends Model
             $request->status_id = RequestFileStatus::STATUS_END_ANALYSIS;
             $request->save();
 
-            sleep(60);
+//            sleep(60);
         }
     }
 
@@ -251,7 +265,7 @@ class Request extends Model
         ])
             ->whereIn('status_id', [
                 RequestFileStatus::STATUS_END_TRANSCRIBE,
-                RequestFileStatus::STATUS_BEGIN_ANALYSIS
+                RequestFileStatus::STATUS_BEGIN_ANALYSIS,
             ])
             ->limit(4)
             ->get();
@@ -275,11 +289,12 @@ class Request extends Model
                     $file->status_id = RequestFileStatus::STATUS_BEGIN_ANALYSIS;
                     $file->save();
                 }
+
                 $check_list = [];
                 $correct_list = [];
                 $determine_list = [];
                 foreach ($file->chunks as $chunk) {
-                    $chunk_data = (array)$chunk->attributes;
+                    $chunk_data = $chunk->attributes;
 
                     unset($chunk_data['chunk_id'], $chunk_data['file_id']);
                     $check_list[] = $chunk_data;
@@ -303,13 +318,25 @@ class Request extends Model
                     $determine_list = $tmp_list;
                 }
 
+                $detemine_data = [
+                    'theme' => $request->theme->theme_name,
+                    'phrases' => $determine_list
+                ];
+                $detemine_content = json_encode($detemine_data, JSON_UNESCAPED_UNICODE);
+                [$detemine_output, $status] = $request->detemine($detemine_content);
+
                 $analysis_data = [
                     'theme' => $request->theme->theme_name,
                     'phrases' => $check_list
                 ];
                 $analysis_content = json_encode($analysis_data, JSON_UNESCAPED_UNICODE);
-                [$analysis_output, $status] = $this->analysisNew($analysis_content, $instruction_list);
-                if (!empty($analysis_output) and $status) {
+                [$analysis_output, $status] = $request->analysisNew($analysis_content, $instruction_list);
+
+                $output = json_encode([
+                    'speakers' => $detemine_output ?? null,
+                    'analysis' => $analysis_output ?? null
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+                if (!empty($output) && $status) {
                     $file->status_id = RequestFileStatus::STATUS_END_ANALYSIS;
                     FileAnalysis::create([
                         'file_id' => $file->id,
@@ -338,27 +365,28 @@ class Request extends Model
             "content-type: application/json"
         ];
 
-        // Загрузка файла
-        $file = file_get_contents($filePath);
-        $response_data = $this->sendCurlRequest($url, $file, $headers);
-        $upload_url = $response_data["upload_url"];
+        if (file_exists($filePath)) {
+            // Загрузка файла
+            $file = file_get_contents($filePath);
+            $response_data = $this->sendCurlRequest($url, $file, $headers);
+            $upload_url = $response_data["upload_url"];
 
-        $url = $base_url . "/transcript";
-        $data = json_encode([
-            'audio_url' => $upload_url,  // URL загрузки
-            'language_code' => 'ru',
-            'speakers_expected' => 2,
-            'speaker_labels' => true,
-            'punctuate' => true,
-        ]);
+            $url = $base_url . "/transcript";
+            $data = json_encode([
+                'audio_url' => $upload_url,  // URL загрузки
+                'language_code' => 'ru',
+                'speakers_expected' => 2,
+                'speaker_labels' => true,
+                'punctuate' => true,
+            ], JSON_THROW_ON_ERROR);
 
-        $response_data = $this->sendCurlRequest($url, $data, $headers);
+            $response_data = $this->sendCurlRequest($url, $data, $headers);
 
-        $transcriptId = $response_data['id'] ?? null;
-        if ($transcriptId) {
-            return $this->pollForTranscription($transcriptId, $headers);
+            $transcriptId = $response_data['id'] ?? null;
+            if ($transcriptId) {
+                return $this->pollForTranscription($transcriptId, $headers);
+            }
         }
-
         return [[], false];
     }
 
@@ -366,7 +394,8 @@ class Request extends Model
     private function pollForTranscription($transcriptId, $headers)
     {
         $status = true;
-        $url = config('services.assemblyai.api_url') . "/v2/transcript/{$transcriptId}";
+        $baseUrl = config('services.assemblyai.api_url');
+        $url = $baseUrl . "/v2/transcript/{$transcriptId}";
         $wait = true;
 
         while ($wait && $status) {
@@ -395,44 +424,30 @@ class Request extends Model
 
         return [$result, $status];
     }
-    // Метод для анализа с дополнительными инструкциями
-    public function analysis(string $content, string $instructionText = "")
+
+    private function detemine(string $content)
     {
         $service = new OpenAIAnalysisService;
-        $status = false;
-        $result = "";
-
-        // Создаем сообщение пользователя
-        $service->createMessage($content);
-
-        // Запускаем выполнение
-        $run = $service->createRun($content, null, $instructionText);
-        $runId = $run['id'] ?? null;
-
-        if ($runId) {
-            $status = true;
-
-            // Ожидаем завершения выполнения задачи
-            [$run, $messageId] = $service->threadWait($runId);
-
-            // Получаем результат
-            $result = $service->getResult($run, $messageId);
-        }
-
-        return [$result, $status];
-    }
-    private function analysisNew(string $content, array $instruction_list = [])
-    {
+        $service->setThreadByUserRequest($this);
 
         $determine_speaker_name = "determine_speaker";
         $determine_speaker_output = json_encode([
             "1" => "Клиент",
             "2" => "Оператор"
-        ]);
+        ], JSON_THROW_ON_ERROR);
 
-        $determine_speaker_result = $this->analysisFunction($content,
+        $instruction_list = [
+            "Дан массив части диалога. Определи говорящего: клиента и оператора."
+        ];
+
+        return $service->analysisFunction($content,
             $determine_speaker_name, $determine_speaker_output, $instruction_list);
+    }
 
+    private function analysisNew(string $content, array $instruction_list = [])
+    {
+        $service = new OpenAIAnalysisService;
+        $service->setThreadByUserRequest($this);
 
         $check_sample_name = "check_sample";
         $check_sample_output = json_encode([
@@ -468,40 +483,8 @@ class Request extends Model
             ]
         ], JSON_THROW_ON_ERROR);
 
-        return $this->analysisFunction($content,
+        return $service->analysisFunction($content,
             $check_sample_name, $check_sample_output, $instruction_list);
-    }
-
-    // Метод для анализа с дополнительными инструкциями
-    public function analysisFunction(string $content, string $function_name,
-                                     string $function_output, array $instruction_list = [])
-    {
-        $service = new OpenAIAnalysisService;
-        $status = true;
-        $messageId = null;
-
-        // Создаем запрос на выполнение функции
-        $run = $service->createRun($content, $function_name, $instruction_list);
-        $runId = $run['id'] ?? null;
-
-        if (!$runId) {
-            return ['', false];
-        }
-
-        // Ожидаем завершения выполнения запроса
-        [$run, $messageId] = $service->threadWait($runId);
-
-        // Получаем результат
-        $result = $service->getResult($run, $messageId);
-
-        // Если нужно отправить выходные данные для функции
-        $service->submitFunctionOutputs($run, $function_name, $function_output);
-
-        // Повторно ожидаем завершение
-        [$run, $messageId] = $service->threadWait($runId);
-
-        // Возвращаем результат
-        return $service->getResult($run, $messageId);
     }
 
     // Простой метод отправки CURL запроса

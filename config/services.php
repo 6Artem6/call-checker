@@ -42,7 +42,8 @@ return [
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
-        'assistant_id' => env('OPENAI_ASSISTANT_ID'),
+        'voice_assistant_id' => env('OPENAI_VOICE_ASSISTANT_ID'),
+        'chat_assistant_id' => env('OPENAI_CHAT_ASSISTANT_ID'),
         'thread_id' => env('OPENAI_THREAD_ID'),
         'api_url' => env('OPENAI_API_URL'),
     ],

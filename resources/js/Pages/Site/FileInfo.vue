@@ -1,10 +1,11 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from "vue";
-import { usePage } from '@inertiajs/vue3';
+import {Head, usePage} from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 // import { useRoute } from "vue-router";
 import WaveSurfer from "wavesurfer.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
+import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js'
 
 const page = usePage();
 // Получение параметра маршрута
@@ -15,6 +16,7 @@ const model = ref({ value: { request_id: null, file_id: null } });
 const segments = ref([]);
 const chunks = ref([]);
 const instructions = ref([]);
+const analysisText = ref("");
 const fileUrl = ref("");
 const backUrl = ref("");
 
@@ -29,6 +31,7 @@ model.value = page.props.model;
 segments.value = page.props.segments;
 chunks.value = page.props.chunks;
 instructions.value = page.props.instructions;
+analysisText.value = page.props.analysisText;
 fileUrl.value = "/file/" + model.value.file_id;
 backUrl.value = "/file-list/" +  model.value.request_id;
 
@@ -44,7 +47,8 @@ const initWaveSurfer = () => {
         progressColor: "#4C1D95",
         url: fileUrl.value,
         plugins: [
-            regions // Регистрация плагина Regions
+            regions, // Регистрация плагина Regions
+            TimelinePlugin.create()
         ],
     });
 
@@ -178,6 +182,8 @@ onMounted(() => {
 
 <template>
     <AuthenticatedLayout>
+        <Head title="Просмотр информации о записи" />
+
         <div class="w-full mx-auto p-6">
             <!-- Заголовок страницы -->
             <div class="flex justify-between items-center mb-6">
@@ -263,7 +269,7 @@ onMounted(() => {
                     <!-- Результат проверки -->
                     <div>
                         <h3 class="text-md font-semibold">Результат проверки</h3>
-                        <p class="text-gray-700">{{ analysisText }}</p>
+                        <p class="text-gray-700" v-html="analysisText"></p>
                     </div>
                 </div>
             </div>

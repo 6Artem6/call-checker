@@ -7,7 +7,7 @@ use getID3;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Auth;
+
 
 class File extends Model
 {
@@ -27,20 +27,21 @@ class File extends Model
 
     public $timestamps = false;
 
-    public const SCENARIO_CREATE = 'create';
-
     /**
      * Правила валидации
      */
     public static function rules(): array
     {
         return [
-            'file_id' => 'unique:file,file_id',
-            'file_name' => 'required|string|max:1024',
-            'file_ext' => 'required|string|max:6',
-            'file_size' => 'required|integer',
-            'file_time' => 'required|integer',
-            'file_hash' => 'required|string|max:40',
+            'file_id' => ['unique:file,file_id'],
+            'file_name' => ['required', 'string', 'max:1024'],
+            'file_ext' => ['required', 'string', 'max:6'],
+            'file_size' => ['required', 'integer'],
+            'file_time' => ['required', 'integer'],
+            'file_hash' => ['required', 'string', 'max:40'],
+            'file_system_name' => ['required', 'string', 'max:256'],
+            'request_id' => ['required', 'integer'],
+            'status_id' => ['required', 'integer'],
         ];
     }
 
@@ -95,7 +96,7 @@ class File extends Model
         }
 
         if ($this->save()) {
-            $path = $this->getLocalFilePath();
+            $path = $this->getFilePath();
             Storage::disk('local')->put($path, file_get_contents($file->getRealPath()));
             return true;
         }
@@ -137,11 +138,19 @@ class File extends Model
     }
 
     /**
+     * Путь к файлу
+     */
+    public function getFilePath(): string
+    {
+        return 'repository/files/' . $this->file_system_name;
+    }
+
+    /**
      * Локальный путь к файлу
      */
     public function getLocalFilePath(): string
     {
-        return Storage::disk('local')->path('repository/files/' . $this->file_system_name);
+        return Storage::disk('local')->path($this->getFilePath());
     }
 
     /**
@@ -162,8 +171,9 @@ class File extends Model
 
     public function getViewHtml()
     {
-        return  '<audio controls>' .
-                    '<source src="' . $this->getUrl() . '" type="audio/mpeg">' .
-                '</audio>';
+        $url = $this->getUrl();
+        return  "<audio controls>" .
+                "<source src=\"{$url}\" type=\"audio/mpeg\">" .
+                "</audio>";
     }
 }

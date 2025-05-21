@@ -34,8 +34,16 @@ class RequestInstruction extends Model
     public static function rules()
     {
         return [
-            'instruction_id' => 'required|integer|unique:request_instruction,instruction_id,NULL,NULL,request_id',
-            'request_id' => 'required|integer|unique:request_instruction,request_id,NULL,NULL,instruction_id',
+            'instruction_id' => [
+                'required',
+                'integer',
+                'unique:request_instruction,instruction_id,NULL,NULL,request_id'
+            ],
+            'request_id' => [
+                'required',
+                'integer',
+                'unique:request_instruction,request_id,NULL,NULL,instruction_id'
+            ],
         ];
     }
 }

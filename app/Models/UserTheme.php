@@ -8,7 +8,6 @@ class UserTheme extends Model
 {
     protected $table = 'user_theme'; // Указание таблицы
     public $timestamps = false; // Отключение полей created_at/updated_at, если их нет в таблице
-    protected $primaryKey = null; // Указание, что нет одного первичного ключа
     public $incrementing = false; // Отключение автоинкремента, так как PK составной
 
     /**
@@ -25,8 +24,8 @@ class UserTheme extends Model
     public static function rules()
     {
         return [
-            'user_id' => 'required|integer',
-            'theme_id' => 'required|integer',
+            'user_id' => ['required', 'integer'],
+            'theme_id' => ['required', 'integer'],
         ];
     }
 

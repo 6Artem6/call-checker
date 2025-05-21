@@ -12,8 +12,8 @@ class CronController extends Controller
      */
     public function fileTranscribe(): JsonResponse
     {
-        $request = new Request();
-        $request->saveDataTranscribe();
+        $model = new Request();
+        $model->saveDataTranscribe();
         return response()->json(['message' => 'File transcription completed.']);
     }
 

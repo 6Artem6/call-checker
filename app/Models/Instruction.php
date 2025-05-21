@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Auth;
 
 class Instruction extends Model
 {
@@ -42,10 +41,10 @@ class Instruction extends Model
                 'string',
                 'max:256',
                 'regex:/^[а-яa-z0-9\s\,\.\:\;\!\@\#\%\(\)\[\]\-\+\=\*\?\'\"\/\\\\]+$/iu',
-                'unique:instruction,instruction_text,NULL,instruction_id,user_id,' . Auth::id() . ',theme_id,:theme_id',
+                'unique:instruction,instruction_text,NULL,instruction_id,user_id,' . auth()->id() . ',theme_id,:theme_id',
             ],
-            'user_id' => 'required|integer',
-            'theme_id' => 'required|integer',
+            'user_id' => ['required', 'integer'],
+            'theme_id' => ['required', 'integer'],
         ];
     }
 
@@ -81,10 +80,8 @@ class Instruction extends Model
     protected static function booted(): void
     {
         static::saving(static function ($instruction) {
-            if ($instruction->scenario === self::SCENARIO_CREATE) {
-                $instruction->user_id = Auth::id();
-                $instruction->instruction_text = self::cleanText($instruction->instruction_text);
-            }
+            $instruction->user_id = auth()->id();
+            $instruction->instruction_text = self::cleanText($instruction->instruction_text);
         });
     }
 
@@ -95,7 +92,7 @@ class Instruction extends Model
     {
         return self::query()
             ->select(['instruction_id as id', 'instruction_text as text'])
-            ->where('user_id', Auth::id())
+            ->where('user_id', auth()->id())
             ->where('theme_id', $themeId)
             ->get()
             ->toArray();
@@ -112,7 +109,6 @@ class Instruction extends Model
             ->get();
 
         foreach ($list as $instruction) {
-            $instruction->scenario = self::SCENARIO_LOAD;
             $instruction->is_set = false;
         }
 

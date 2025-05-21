@@ -1,6 +1,6 @@
 <script setup>
-import {ref} from "vue";
-import { usePage } from '@inertiajs/vue3';
+import {onMounted, ref} from "vue";
+import {Head, usePage} from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 
@@ -12,8 +12,10 @@ requests.value = page.props.requests;
 
 <template>
     <AuthenticatedLayout>
+        <Head title="Список запросов" />
+
         <div class="w-full p-6">
-            <h1 class="text-2xl text-white font-semibold mb-4">{{ 'Просмотр запросов' }}</h1>
+            <h1 class="text-2xl text-white font-semibold mb-4">{{ 'Просмотр списка запросов' }}</h1>
 
             <div class="flex justify-center">
                 <div class="w-full max-w-4xl">
