@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginForm;
-use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -37,8 +36,8 @@ class AuthController extends Controller
     public function logout()
     {
         Auth::logout();
-        session()->invalidate();
-        session()->regenerateToken();
+        session()?->invalidate();
+        session()?->regenerateToken();
 
         return redirect('/');
     }

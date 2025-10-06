@@ -2,13 +2,11 @@
 
 namespace App\Services;
 
-use App\Models\ChatGPTSetting;
-use App\Models\ChatMessage;
-use App\Models\Request;
-use App\Models\UserChatThread;
-use App\Models\UserRequestThread;
-use App\Models\UserThread;
-use Illuminate\Database\Eloquent\Model;
+use App\Models\AiLead\Gpt\Abstracts\BaseChatGPTSetting;
+use App\Models\AiLead\Chat\Abstracts\BaseChatMessage;
+use App\Models\AiLead\Chat\{ChatMessage, ChatMessagePlayground, UserChatThread, PlaygroundChatThread};
+use App\Models\Voice\{UserRequestThread, Request};
+use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Exception\ConnectException;
@@ -21,7 +19,8 @@ class OpenAIAnalysisService
     protected string $api_url;
     protected string $assistant_id;
     protected string $thread_id;
-    protected ?ChatGPTSetting $setting = null;
+    protected ?BaseChatGPTSetting $setting = null;
+    protected ?BaseChatMessage $chat_message = null;
 
     public function __construct()
     {
@@ -45,9 +44,62 @@ class OpenAIAnalysisService
             ->timeout(600);
     }
 
-    public function setSetting(ChatGPTSetting $setting): void
+    private function getGuzzleClient(): Client
+    {
+        return new Client([
+            'base_uri' => $this->api_url,
+            'timeout' => 600,
+            'headers' => array_merge(
+                ['Authorization' => "Bearer {$this->api_key}"],
+                $this->getHeaders()
+            ),
+        ]);
+    }
+
+    public function setSetting(BaseChatGPTSetting $setting): void
     {
         $this->setting = $setting;
+    }
+
+    public function setParamsByUserRequest(Request $request): void
+    {
+        $this->assistant_id = config('services.openai.voice_assistant_id');
+        $this->thread_id = $this->getOrCreateThreadId(
+            UserRequestThread::class, [
+                'user_id' => $request->user_id,
+                'theme_id' => $request->theme_id
+            ]
+        );
+    }
+
+    public function setThreadByUserChat(ChatMessage $message): void
+    {
+        $this->assistant_id = config('services.openai.chat_assistant_id');
+        $this->thread_id = $this->getOrCreateThreadId(
+            UserChatThread::class, [
+                'domain' => $message->domain,
+                'lead_id' => $message->lead_id
+            ]
+        );
+    }
+
+    public function setThreadByPlaygroundChat(ChatMessagePlayground $message): void
+    {
+        $this->chat_message = $message;
+        $this->assistant_id = config('services.openai.chat_assistant_id');
+        $this->thread_id = $this->getOrCreateThreadId(
+            PlaygroundChatThread::class, [
+                'account_id' => $this->chat_message->account_id
+            ]
+        );
+    }
+
+    private function updateMessageStatus(string $status): void
+    {
+        if ($this->chat_message) {
+            $this->chat_message->status = $status;
+            $this->chat_message->save();
+        }
     }
 
     private function getOrCreateThreadId($type, array $params): string
@@ -80,67 +132,56 @@ class OpenAIAnalysisService
         return $thread_id;
     }
 
-    public function setParamsByUserRequest(Request $request): void
-    {
-        $this->assistant_id = config('services.openai.voice_assistant_id');
-        $this->thread_id = $this->getOrCreateThreadId(
-            UserRequestThread::class, [
-                'user_id' => $request->user_id,
-                'theme_id' => $request->theme_id
-            ]
-        );
-    }
-
-    public function setThreadByUserChat(ChatMessage $message): void
-    {
-        $this->assistant_id = config('services.openai.chat_assistant_id');
-        $this->thread_id = $this->getOrCreateThreadId(
-            UserChatThread::class, [
-                'domain' => $message->domain,
-                'lead_id' => $message->lead_id
-            ]
-        );
-    }
-
     private function createRunRequest(string $content, array $params): array
     {
         try {
-            // Проверяем, есть ли активный run в потоке
             $response = $this->getRequestBase()
                 ->get("/threads/{$this->thread_id}/runs");
+
             $activeRun = collect($response->json('data'))
                 ->firstWhere('status', 'in_progress');
+
             $run_id = $activeRun['id'] ?? null;
+            Log::info("run_id: {$run_id}");
         } catch (ConnectException $e) {
+            Log::info(json_encode($e->getMessage(),
+                JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             $run_id = null;
         }
 
-        // Если активный run найден, ждем его завершения (максимум 60 секунд)
         if ($run_id) {
-            $maxWaitTime = 60; // максимальное время ожидания в секундах
-            $start = time();
+            Log::info("\$run_id - {$run_id}");
 
-            // Используем стрим для проверки статуса в реальном времени
-            $statusResponse = $this->getRequestBase()
-                ->get("/threads/{$this->thread_id}/runs/{$run_id}", [
-                    'stream' => true
-                ]);
-
-            // Обрабатываем стрим
+            $attempts = 0;
+            $maxAttempts = 30;
             $status = 'in_progress';
-            while ($status === 'in_progress' && (time() - $start) < $maxWaitTime) {
-                $statusResponse->stream(function ($chunk) use (&$status) {
-                    // Каждый кусок данных, который поступает
-                    $responseData = json_decode($chunk, true);
-                    if (isset($responseData['status'])) {
-                        $status = $responseData['status']; // Обновляем статус
-                    }
-                });
-                sleep(2); // Пауза, чтобы не перегружать сервер
+            $this->updateMessageStatus($status);
+
+            // Вместо стрима — делаем опрос статуса по таймауту
+            while ($status === 'in_progress' && $attempts < $maxAttempts) {
+                $res = $this->getRequestBase()
+                    ->get("/threads/{$this->thread_id}/runs/{$run_id}");
+                $data = $res->json();
+
+                Log::info("res: {$res}");
+                if (isset($data['status'])) {
+                    $status = $data['status'];
+                    Log::info("Run status: {$status}");
+
+                    $this->updateMessageStatus($status);
+                } else {
+                    Log::warning('Run status not found in response');
+                    break;
+                }
+
+                if ($status === 'in_progress') {
+                    sleep(2);
+                }
+
+                $attempts++;
             }
         }
 
-        // Пытаемся добавить сообщение в поток, повторяя попытку при ошибке о существующем активном run
         $messageResponse = null;
         $retryCount = 0;
         $maxRetries = 3;
@@ -152,15 +193,17 @@ class OpenAIAnalysisService
                         'role' => 'user',
                         'content' => $content,
                     ]);
-                // Если запрос успешен, выходим из цикла
                 break;
             } catch (Exception $e) {
-                // Если ошибка указывает на активный run, ждем и повторяем попытку
-                if (str_contains($e->getMessage(), 'already has an active run')) {
+                Log::info(json_encode($e->getMessage(),
+                    JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                if ($status === 'in_progress') {
+                    Log::info("Waiting for run to complete...");
                     sleep(2);
-                    $retryCount++;
+                } elseif (!in_array($status, ['completed', 'requires_action', 'failed', 'cancelled', 'expired'])) {
+                    Log::warning("Unexpected run status: {$status}");
+                    break;
                 } else {
-                    // Если ошибка другого типа, выбрасываем её дальше
                     throw $e;
                 }
             }
@@ -169,14 +212,14 @@ class OpenAIAnalysisService
         Log::info(json_encode($messageResponse->json(),
             JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
-        // Если активного run не было, создаём новый run
         if (!$run_id) {
+            Log::info("!\$run_id = {$run_id}");
+
             return $this->getRequestBase()
                 ->post("/threads/{$this->thread_id}/runs", $params)
                 ->json();
         }
 
-        // Возвращаем результат добавления сообщения
         return $messageResponse->json();
     }
 
@@ -220,7 +263,7 @@ class OpenAIAnalysisService
             'assistant_id' => $this->setting->assistant_id,
 //            'additional_instructions' => $this->setting->prompt,
             'model' => $this->setting->model,
-            'temperature' => (float) $this->setting->temperature,
+            // 'temperature' => (float) $this->setting->temperature,
             'tools' => [['type' => 'file_search']],
             'tool_resources' => [
                 'file_search' => [
@@ -230,6 +273,7 @@ class OpenAIAnalysisService
         ]);
 
         if (!isset($run['id'])) {
+            Log::info("run:");
             Log::info(json_encode($run, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             return ['', false];
         }
@@ -279,6 +323,7 @@ class OpenAIAnalysisService
     public function getResult(?array $run, ?string $messageId): array
     {
         $result = '';
+        Log::info("run:");
         Log::info(json_encode($run, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
         if (!empty($run) and ($run['status'] === 'completed')) {
             $messages = $this->getMessages();
@@ -313,26 +358,35 @@ class OpenAIAnalysisService
     public function threadWait(string $runId): array
     {
         $messageId = null;
-        $stop = false;
         $run = null;
-        while (!$stop) {
-            sleep(1);
-            $steps = $this->getRunSteps($runId);
 
-            Log::info(json_encode($steps, JSON_PRETTY_PRINT));
-            foreach ($steps as $step) {
-                if ($step['status'] === 'completed') {
-                    $stop = true;
-                    break;
-                }
+        $start = time();
+        $timeout = 300; // 5 минут
+
+        while (true) {
+            sleep(1);
+
+            if (time() - $start > $timeout) {
+                Log::warning("Run $runId exceeded 5-minute timeout.");
+                break;
             }
 
-            if ($stop) {
-                $messageId = $steps[0]['step_details']['message_creation']['message_id'] ?? null;
-            } else {
-                $run = $this->getRun($runId);
+            $run = $this->getRun($runId);
+            $status = $run['status'] ?? 'unknown';
+
+            $this->updateMessageStatus($status);
+
+            Log::info("Run status: $status");
+            if (in_array($status, ['completed', 'failed', 'cancelled', 'expired'])) {
+                break;
             }
         }
+
+        $steps = $this->getRunSteps($runId);
+        Log::info("steps:");
+        Log::info(json_encode($steps, JSON_PRETTY_PRINT));
+
+        $messageId = $steps[0]['step_details']['message_creation']['message_id'] ?? null;
 
         return [$run, $messageId];
     }

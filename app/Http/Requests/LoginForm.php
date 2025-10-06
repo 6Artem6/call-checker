@@ -56,7 +56,6 @@ class LoginForm extends FormRequest
             $this->session()->regenerate();
             return true;
         }
-
         // Если аутентификация не удалась
 
         return false;

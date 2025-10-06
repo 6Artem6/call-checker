@@ -56,6 +56,7 @@ return [
             'driver' => 'stack',
             'channels' => explode(',', env('LOG_STACK', 'single')),
             'ignore_exceptions' => false,
+            'tap' => [App\Logging\CustomizeFormatter::class],
         ],
 
         'single' => [
@@ -63,6 +64,8 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'tap' => [App\Logging\CustomizeFormatter::class],
+            'permission' => null,
         ],
 
         'daily' => [
@@ -71,6 +74,16 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            'permission' => null,
+        ],
+
+        'amocrm' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/amocrm.log'),
+            'level' => 'info',
+            'days' => 3,
+            'tap' => [App\Logging\CustomizeFormatter::class],
+            'permission' => 0664,
         ],
 
         'slack' => [

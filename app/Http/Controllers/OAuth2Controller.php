@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AccountOAuth2;
+use App\Models\AiLead\Account\AccountOAuth2;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 

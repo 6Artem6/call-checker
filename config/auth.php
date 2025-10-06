@@ -71,7 +71,7 @@ return [
 
         'users' => [
             'driver' => 'eloquent',
-            'model' => App\Models\AccountUser::class,
+            'model' => App\Models\AiLead\Account\AccountUser::class,
         ],
 
         // 'users' => [

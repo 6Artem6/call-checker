@@ -10,7 +10,8 @@ class Invoices extends Migration
     {
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('yoomoney_account_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('account_id')->nullable()->constrained()->onDelete('set null');
+            $table->string('domain')->nullable();
             $table->decimal('amount', 12, 2);
             $table->char('currency', 3)->default('RUB');
             $table->uuid('invoice_id')->unique();

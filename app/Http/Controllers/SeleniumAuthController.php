@@ -27,11 +27,11 @@ class SeleniumAuthController extends Controller
 
     public function seleniumTestRequest($userId, Request $request)
     {
-        $url = '';
-        $username = '';
-        $password = '';
-        $account_id = 0;
-        $leadId = 0;
+        $url = 'https://kirilltihiy.amocrm.ru';
+        $username = 'kirill.tihiy@mail.ru';
+        $password = '725513';
+        $account_id = 32181490;
+        $leadId = 32886545;
         $text = "test";
 
         $this->seleniumAuthService->init($account_id);
@@ -47,10 +47,10 @@ class SeleniumAuthController extends Controller
 
     public function puppeteerTestRequest(Request $request)
     {
-        $domain = '';
-        $account_id = 0; // Идентификатор аккаунта
-        $leadId = 0;
-        $text = "";
+        $domain = 'kirilltihiy.amocrm.ru';
+        $account_id = 32181490; // Идентификатор аккаунта
+        $leadId = 32886545;
+        $text = "test";
 
         $account = AccountOAuth2::where('domain', $domain)->first();
 

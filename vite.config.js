@@ -3,9 +3,10 @@ import laravel from 'laravel-vite-plugin';
 import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
+    base: '/build/',
     plugins: [
         laravel({
-            input: 'resources/js/app.js',
+            input: ['resources/js/app.js'],
             refresh: true,
             buildDirectory: 'build',
         }),
@@ -19,13 +20,15 @@ export default defineConfig({
         }),
     ],
     build: {
-        minify: false, // Отключение минификации
-        sourcemap: true, // Включение карты источников для отладки
-        manifest: "manifest.json",
-        emptyOutDir: true,
-        outDir: 'public/build',
+        minify: false,
+        sourcemap: true,
+        manifest: true,
         rollupOptions: {
-            input: 'resources/js/app.js',
+            output: {
+                entryFileNames: 'assets/[name]-[hash].js',
+                chunkFileNames: 'assets/[name]-[hash].js',
+                assetFileNames: 'assets/[name]-[hash][extname]',
+            },
         },
     },
 });

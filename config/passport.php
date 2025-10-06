@@ -26,9 +26,9 @@ return [
     |
     */
 
-    'private_key' => env('PASSPORT_PRIVATE_KEY'),
-
-    'public_key' => env('PASSPORT_PUBLIC_KEY'),
+    'private_key' => env('PASSPORT_PRIVATE_KEY', 'file://'.storage_path('oauth/oauth-private.key')),
+    
+    'public_key'  => env('PASSPORT_PUBLIC_KEY',  'file://'.storage_path('oauth/oauth-public.key')),
 
     /*
     |--------------------------------------------------------------------------

@@ -2,46 +2,83 @@
 
 namespace App\Jobs;
 
-use App\Models\ChatGPTSetting;
-use App\Models\ChatMessage;
+use App\Models\AiLead\Gpt\ChatGPTSetting;
+use App\Models\AiLead\Chat\ChatMessage;
 use Facebook\WebDriver\Exception\TimeoutException;
+use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use PDOException;
+use Throwable;
 
 class SendAnswer implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected ChatMessage $message;
-    protected ChatGPTSetting $setting;
+    public int $timeout = 300;
+    public int $tries = 3;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct(ChatMessage $message, ChatGPTSetting $setting)
+    public function backoff(): array
     {
-        ini_set('max_execution_time', 300);
-        ini_set('memory_limit', '-1');
-        $this->message = $message;
-        $this->setting = $setting;
+        return [1, 5, 10];
     }
 
-    /**
-     * Execute the job.
-     */
+    public function __construct(
+        protected int $messageId,
+        protected int $settingId
+    ) {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '-1');
+    }
+
     public function handle(): void
     {
-//        try {
-        Log::info("before message");
-        $this->message->setSetting($this->setting);
-        $this->message->saveAnswerAnalysis();
-        Log::info("after message");
-//        } catch (TimeoutException) {
-//            $this->message->saveAnswerAnalysis();
-//        }
+        try {
+            // Вместо прямой обработки — ставим батч
+            Log::channel('amocrm')->info("SendAnswer queued batch", [
+                'message_id' => $this->messageId,
+                'setting_id' => $this->settingId,
+            ]);
+
+            $message = ChatMessage::findOrFail($this->messageId);
+            $setting = ChatGPTSetting::findOrFail($this->settingId);
+
+            // Отложенная обработка пачки для лида
+            ProcessBatchAnswer::dispatch(
+                $message->lead_id,
+                $this->settingId
+            )->delay(now()->addSeconds($setting->delay));
+
+        } catch (Throwable $e) {
+            $this->failed($e);
+            throw $e;
+        }
+    }
+
+    public function failed(TimeoutException|ConnectException|PDOException|Throwable $exception): void
+    {
+        Log::channel('amocrm')->error("SendAnswer failed", [
+            'message_id' => $this->messageId,
+            'setting_id' => $this->settingId,
+            'error'      => $exception->getMessage(),
+        ]);
+
+        try {
+            $message = ChatMessage::find($this->messageId);
+            $setting = ChatGPTSetting::with('account')->find($this->settingId);
+
+            if ($message && $setting) {
+                $message->setSetting($setting);
+                $message->saveAnswerAnalysis();
+            }
+        } catch (Throwable $e) {
+            Log::channel('amocrm')->error("Failed recovery also failed", [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

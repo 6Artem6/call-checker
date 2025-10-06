@@ -7,17 +7,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as AuthenticatableModel;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Passport\HasApiTokens;
 
 class User extends AuthenticatableModel
 {
-    use Notifiable, HasFactory;
+    use Notifiable, HasFactory, HasApiTokens;
 
     protected $table = 'user'; // Указание таблицы, если она отличается от стандартной
     protected $primaryKey = 'user_id'; // Указание первичного ключа
     public $timestamps = false; // Удалите, если в таблице есть поля created_at/updated_at
 
     /**
-     * Массово заполняемые атрибуты
+     * Массов заполняемые атрибуты
      */
     protected $fillable = [
         'user_name',

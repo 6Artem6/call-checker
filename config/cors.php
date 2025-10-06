@@ -19,9 +19,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://*.amocrm.ru'],
+    'allowed_origins' => [],
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^https://.*\.amocrm\.ru$#',
+    ],
 
     'allowed_headers' => ['*'],
 

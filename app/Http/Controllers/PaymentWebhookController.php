@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Invoice;
-use App\Models\InvoiceLog;
+use App\Models\AiLead\Payment\{Invoice, InvoiceLog};
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Request;
 use YooKassa\Model\Notification\NotificationEventType;
@@ -12,7 +11,7 @@ class PaymentWebhookController extends Controller
 {
     public function handle(Request $request)
     {
-        Log::error('Тело запроса: ' . json_encode($request, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        Log::info('Webhook payload: ' . $request->getContent());
 
         $signature = $request->header('X-Request-Signature');
         $payload = $request->getContent();
@@ -49,8 +48,16 @@ class PaymentWebhookController extends Controller
         ]);
 
         if ($invoice) {
-            $invoice->status = $data['event'] === NotificationEventType::PAYMENT_SUCCEEDED ?
-                                                Invoice::STATUS_SUCCEEDED : Invoice::STATUS_CANCELED;
+            $status = $data['object']['status'] ?? null;
+
+            if ($status === 'succeeded') {
+                $invoice->status = Invoice::STATUS_SUCCEEDED;
+            } elseif ($status === 'pending' || $status === 'waiting_for_capture') {
+                $invoice->status = Invoice::STATUS_PENDING;
+            } else {
+                $invoice->status = Invoice::STATUS_CANCELED;
+            }
+
             $invoice->save();
         }
 

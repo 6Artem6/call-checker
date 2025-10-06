@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\AccountOAuth2;
-use App\Models\UserCookie;
+use App\Models\AiLead\Account\AccountOAuth2;
+use App\Models\AiLead\Account\UserCookie;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Promise\Utils;
@@ -39,7 +39,7 @@ class PuppeteerService
      * Отправка сообщения в лид через Puppeteer API
      * @throws Exception
      */
-    public function sendLeadMessage(int $account_id, string $domain, int $leadId, string $messageText)
+    public function sendLeadMessage(int $account_id, string $domain, int $leadId, string $messageText, string $noteText = "", string $taskText = "")
     {
         $baseUrl = "https://" . $domain;
         $account = AccountOAuth2::query()->where('domain', $domain)->first();
@@ -48,6 +48,7 @@ class PuppeteerService
         }
 
         if ($account->isTokenExpired()) {
+            Log::warning("token expired");
             $account->refreshAccessData();
         }
 
@@ -70,7 +71,9 @@ class PuppeteerService
             'access_token'  => $account->access_token,
             'refresh_token' => $account->refresh_token,
             'lead_id'       => $leadId,
-            'message_text'  => $messageText . rand(0, 10),
+            'message_text'  => $messageText,
+            'note_text'     => $noteText,
+            'task_text'     => $taskText,
             'expiry'        => strtotime($account->expires_in)
         ];
 
@@ -110,7 +113,7 @@ class PuppeteerService
                     $message = ($response instanceof ConnectionException)
                         ? $response->getMessage()
                         : $response->body();
-                    Log::info("Запрос выполнен", ['response' => $message]);
+                    Log::channel('amocrm')->info("Запрос выполнен", ['response' => $message]);
 
                     // Если сервер вернул куки через Set-Cookie, пробуем извлечь X-Session-ID
                     if (method_exists($response, 'headers') && isset($response->headers()['Set-Cookie'])) {
@@ -122,7 +125,7 @@ class PuppeteerService
                                     // Обновляем модель и сохраняем в БД
                                     $account->session_id = $newSessionId;
                                     $account->save();
-                                    Log::info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
+                                    Log::channel('amocrm')->info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
                                 }
                             }
                         }
@@ -163,6 +166,67 @@ class PuppeteerService
         if (!$anyFulfilled) {
             throw new Exception("Превышено максимальное количество попыток отправки запроса. Последняя ошибка: " . $lastErrorMessage);
         }
+    }
+
+    /**
+     * Получение истории сообщений сделки
+     */
+    public function getLeadHistory(int $account_id, string $domain, int $leadId, ?int $stopAt = null, int $limit = 100): array
+    {
+        $baseUrl = "https://" . $domain;
+        $account = AccountOAuth2::query()->where('domain', $domain)->first();
+        if (!$account) {
+            throw new Exception("Account not found");
+        }
+
+        if ($account->isTokenExpired()) {
+            Log::warning("token expired");
+            $account->refreshAccessData();
+        }
+
+        // куки (если нужны Puppeteer'у)
+        $cookies = $this->getCookies($account_id)->map(function ($cookie) use ($account) {
+            if ($cookie->name == 'last_login') {
+                $cookie->value = '';
+            } elseif ($cookie->name == 'access_token') {
+                $cookie->value = $account->access_token;
+            } elseif ($cookie->name == 'refresh_token') {
+                $cookie->value = $account->refresh_token;
+            }
+            return $cookie;
+        })->toArray();
+
+        $payload = [
+            'account_id'    => $account_id,
+            'base_url'      => $baseUrl,
+            'access_token'  => $account->access_token,
+            'refresh_token' => $account->refresh_token,
+            'lead_id'       => $leadId,
+            'stop_at'       => $stopAt, // timestamp — до какого created_at грузить
+            'limit'         => $limit,
+            'expiry'        => strtotime($account->expires_in),
+        ];
+
+        $encryptedPayload = $this->encryptData($payload);
+
+        $response = Http::timeout(300)
+            ->withHeaders([
+                'Cookie' => "X-Session-ID={$account->session_id}",
+            ])
+            ->baseUrl(env('PUPPETEER_API_URL'))
+            ->post("/get-lead-history", [
+                'data' => $encryptedPayload,
+            ]);
+
+        if ($response->failed()) {
+            Log::channel('amocrm')->error("Ошибка при получении истории amoCRM", [
+                'lead_id' => $leadId,
+                'error'   => $response->body(),
+            ]);
+            throw new Exception("История не получена: " . $response->body());
+        }
+
+        return $response->json();
     }
 
     public function sendLeadMessageTest(int $account_id, string $domain, int $leadId, string $messageText)
@@ -238,7 +302,7 @@ class PuppeteerService
                     $message = ($response instanceof ConnectionException)
                         ? $response->getMessage()
                         : $response->body();
-                    Log::info("Запрос выполнен", ['response' => $message]);
+                    Log::channel('amocrm')->info("Запрос выполнен", ['response' => $message]);
 
                     if (method_exists($response, 'headers') && isset($response->headers()['Set-Cookie'])) {
                         foreach ($response->headers()['Set-Cookie'] as $cookie) {
@@ -247,7 +311,7 @@ class PuppeteerService
                                 if ($account->session_id !== $newSessionId) {
                                     $account->session_id = $newSessionId;
                                     $account->save();
-                                    Log::info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
+                                    Log::channel('amocrm')->info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
                                 }
                             }
                         }
@@ -314,7 +378,7 @@ class PuppeteerService
                 // Обрабатываем промис без ожидания
                 $promise->then(
                     function ($response) use ($account) {
-                        Log::info("Запрос выполнен", ['response' => $response->body()]);
+                        Log::channel('amocrm')->info("Запрос выполнен", ['response' => $response->body()]);
 
                         // Если в ответе есть новый PUPPETEER_SESSION, обновляем его в БД
                         if (isset($response->headers()['Set-Cookie'])) {
@@ -324,7 +388,7 @@ class PuppeteerService
                                     // Обновляем поле session_id в БД
                                     $account->session_id = $newSessionId;
                                     $account->save();
-                                    Log::info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
+                                    Log::channel('amocrm')->info("Обновлённая X-Session-ID сохранена в БД: {$newSessionId}");
                                 }
                             }
                         }

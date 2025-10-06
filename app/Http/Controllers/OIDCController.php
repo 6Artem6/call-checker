@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AccountOAuth2;
-use App\Models\AccountUser;
-use App\Models\ChatGPTSetting;
+use App\Models\AiLead\Account\{AccountOAuth2, AccountUser};
+use App\Models\AiLead\Gpt\ChatGPTSetting;
+use Exception;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ use Firebase\JWT\ExpiredException;
 use Firebase\JWT\SignatureInvalidException;
 use Inertia\Inertia;
 use Laravel\Passport\Token;
+use RuntimeException;
 
 class OIDCController extends Controller
 {
@@ -23,12 +25,15 @@ class OIDCController extends Controller
      * Запрос токенов у OAuth2 сервера
      * @param array $params
      * @return array
+     * @throws ConnectionException
      */
     private function requestOAuthToken(array $params): array
     {
-        $resp = Http::asForm()->post(config('app.url') . '/oauth/token', $params);
+        $resp = Http::withOptions(['verify' => false])
+            ->asForm()
+            ->post(config('app.url') . '/oauth/token', $params);
         if ($resp->failed()) {
-            abort(401, 'OAuth token error');
+            throw new RuntimeException('OAuth token error' . $resp->getBody());
         }
         return $resp->json();
     }
@@ -58,7 +63,7 @@ class OIDCController extends Controller
     {
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255', 'unique:account_user,email'],
-            'password' => ['required', 'min:8'],
+            'password' => ['required', 'min:6'],
             'domain' => ['required', 'string', 'max:255'],
             'account_id' => ['required', 'integer'],
         ]);
@@ -77,14 +82,18 @@ class OIDCController extends Controller
 
         ChatGPTSetting::firstOrCreate(['account_id' => $data['account_id']]);
 
-        $tokenData = $this->requestOAuthToken([
-            'grant_type' => 'password',
-            'client_id' => config('passport.password_client_id'),
-            'client_secret' => config('passport.password_client_secret'),
-            'username' => $data['email'],
-            'password' => $data['password'],
-            'scope' => '',
-        ]);
+        try {
+            $tokenData = $this->requestOAuthToken([
+                'grant_type' => 'password',
+                'client_id' => config('passport.password_client_id'),
+                'client_secret' => config('passport.password_client_secret'),
+                'username' => $data['email'],
+                'password' => $data['password'],
+                'scope' => '',
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 401);
+        }
 
         $user->update([
             'access_token' => $tokenData['access_token'],
@@ -108,14 +117,18 @@ class OIDCController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $tokenData = $this->requestOAuthToken([
-            'grant_type' => 'password',
-            'client_id' => config('passport.password_client_id'),
-            'client_secret' => config('passport.password_client_secret'),
-            'username' => $data['email'],
-            'password' => $data['password'],
-            'scope' => '',
-        ]);
+        try {
+            $tokenData = $this->requestOAuthToken([
+                'grant_type' => 'password',
+                'client_id' => config('passport.password_client_id'),
+                'client_secret' => config('passport.password_client_secret'),
+                'username' => $data['email'],
+                'password' => $data['password'],
+                'scope' => '',
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 401);
+        }
 
         $user = AccountUser::where('email', $data['email'])->firstOrFail();
         $accountId = $user->oauth2->account_id;
@@ -165,16 +178,20 @@ class OIDCController extends Controller
         $request->validate(['code' => ['required', 'string']]);
         $verifier = $request->session()->pull('code_verifier');
         if (!$verifier) {
-            abort(400, 'PKCE verifier missing');
+            return response(status: 400)->json(['error' => 'PKCE verifier missing']);
         }
 
-        $tokenData = $this->requestOAuthToken([
-            'grant_type' => 'authorization_code',
-            'client_id' => env('PUBLIC_CLIENT_ID'),
-            'redirect_uri' => route('auth-callback'),
-            'code' => $request->input('code'),
-            'code_verifier' => $verifier,
-        ]);
+        try {
+            $tokenData = $this->requestOAuthToken([
+                'grant_type' => 'authorization_code',
+                'client_id' => env('PUBLIC_CLIENT_ID'),
+                'redirect_uri' => route('auth-callback'),
+                'code' => $request->input('code'),
+                'code_verifier' => $verifier,
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 401);
+        }
 
         $accountId = $request->user()->oauth2->account_id;
         $request->user()->update(['refresh_token' => $tokenData['refresh_token']]);
@@ -187,29 +204,33 @@ class OIDCController extends Controller
     {
         $jwtToken = $request->bearerToken();
         if (!$jwtToken) {
-            abort(401);
+            return response(status: 401)->json(['error' => 'No token provided']);
         }
         try {
             $payload = JWT::decode($jwtToken, new Key($this->getPublicKey(), 'RS256'));
-        } catch (ExpiredException $e) {
-            abort(401, 'Token expired');
-        } catch (SignatureInvalidException $e) {
-            abort(401, 'Invalid signature');
-        } catch (\Exception $e) {
-            abort(401, 'Invalid token');
+        } catch (ExpiredException) {
+            return response()->json(['error' => 'Token expired'], 401);
+        } catch (SignatureInvalidException) {
+            return response()->json(['error' => 'Invalid signature'], 401);
+        } catch (Exception) {
+            return response()->json(['error' => 'Invalid token'], 401);
         }
 
         $accountId = $payload->account_id;
         $oauth = AccountOAuth2::where('account_id', $accountId)->firstOrFail();
         $user = AccountUser::where('user_id', $oauth->user_id)->firstOrFail();
 
-        $tokenData = $this->requestOAuthToken([
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $user->refresh_token,
-            'client_id' => config('passport.password_client_id'),
-            'client_secret' => config('passport.password_client_secret'),
-            'scope' => '',
-        ]);
+        try {
+            $tokenData = $this->requestOAuthToken([
+                'grant_type' => 'refresh_token',
+                'refresh_token' => $user->refresh_token,
+                'client_id' => config('passport.password_client_id'),
+                'client_secret' => config('passport.password_client_secret'),
+                'scope' => '',
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 401);
+        }
 
         $user->update(['refresh_token' => $tokenData['refresh_token']]);
         $newJwt = $this->encodeJwt(['account_id' => $accountId]);

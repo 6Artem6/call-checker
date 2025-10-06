@@ -2,11 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\SendAnswer;
-use App\Models\AccountOAuth2;
-use App\Models\ChatGPTSetting;
-use App\Models\ChatMessage;
-use App\Models\UserChatThread;
+use App\Models\AiLead\Chat\{ChatMessage};
+use App\Services\WebhookService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +13,9 @@ use Illuminate\Support\Facades\Validator;
 class WebhookController extends Controller
 {
 
-    public function __construct()
+    public function __construct(
+        private readonly WebhookService $webhookService
+    )
     {
         ini_set('max_execution_time', 600);
         ini_set('memory_limit' , '-1');
@@ -30,71 +29,158 @@ class WebhookController extends Controller
         // Быстрый ответ AmoCRM
         response()->json(['status' => 'success'])->send();
 
-        // Фоновая логика
-        Log::info('AmoCRM Webhook Received:' .
-            json_encode($request->all(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        Log::info('before validated');
+        Log::channel('amocrm')->info('AmoCRM Webhook Received:' .
+            json_encode($request->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
-        try {
-            $validator = Validator::make($request->all(), [
-                'account._links.self' => ['required', 'string'],
-                'message.add.0.text' => ['required', 'string'],
-                'message.add.0.contact_id' => ['required', 'string'],
-                'message.add.0.chat_id' => ['required', 'string'],
-                'message.add.0.origin' => ['required', 'string'],
-                'message.add.0.entity_type' => ['required', 'string'],
-                'message.add.0.entity_id' => ['required', 'string'],
-            ]);
+        $validator = Validator::make($request->all(), [
+            'account._links.self' => ['required', 'string'],
+            'message.add.0.text' => ['required', 'string'],
+            'message.add.0.contact_id' => ['required', 'string'],
+            'message.add.0.chat_id' => ['required', 'string'],
+            'message.add.0.origin' => ['required', 'string'],
+            'message.add.0.entity_type' => ['required', 'string'],
+            'message.add.0.entity_id' => ['required', 'string'],
+        ]);
 
-            if ($validator->fails()) {
-                Log::warning('Validation failed', $validator->errors()->toArray());
-                return; // Ответ уже отправлен, просто выходим
-            }
-
-            $validated = $validator->validated();
-            Log::info('validated');
-
-            $data = $validated['message']['add'][0];
-
-            if ($data['entity_type'] === 'lead') {
-                $data['domain'] = parse_url($validated['account']['_links']['self'])['host'];
-                $data['lead_id'] = $data['entity_id'];
-
-                $record = UserChatThread::where('domain', $data['domain'])
-                    ->where('lead_id', $data['lead_id'])
-                    ->first(['status']);
-
-                if (!$record) {
-                    $record = UserChatThread::create([
-                        'domain' => $data['domain'],
-                        'lead_id' => $data['lead_id'],
-                        'status' => true,
-                    ]);
-                }
-
-                $message = new ChatMessage();
-                $message->fill($data);
-                $message->save();
-                Log::info('saved');
-
-                Log::info(json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-                if ($record->status) {
-                    $setting = ChatGPTSetting::query()
-                        ->with('account')
-                        ->whereHas('account', function ($query) use ($data) {
-                            $query->where('domain', $data['domain']);
-                        })
-                        ->first();
-
-                    SendAnswer::dispatch($message, $setting);
-                    Log::info('after dispatch');
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('Ошибка в обработке вебхука: ' . $e->getMessage());
+        if ($validator->passes()) {
+            $this->webhookService->handleMessageWebhook($validator->validated());
+        } else {
+            Log::channel('amocrm')->warning('Validation failed', $validator->errors()->toArray());
         }
     }
+
+    public function handleWebhookPluginActivate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'account_id' => ['required', 'integer'],
+            'domain' => ['required', 'string'],
+        ]);
+
+        $result = $this->webhookService->handleWebhookPluginActivate($validated);
+        return response()->json($result);
+    }
+
+    public function handleWebhookPluginStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'domain' => ['required', 'string'],
+        ]);
+        $result = $this->webhookService->handleWebhookPluginStatus($validated);
+        return response()->json($result);
+    }
+
+    public function handleWebhookBotStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'domain' => ['required', 'string'],
+            'lead_id' => ['required', 'integer'],
+        ]);
+
+        $result = $this->webhookService->handleWebhookBotStatus($validated);
+        return response()->json($result);
+    }
+
+    public function handleWebhookBotSwitch(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'domain' => ['required', 'string'],
+            'lead_id' => ['required', 'integer'],
+        ]);
+
+        $result = $this->webhookService->handleWebhookBotSwitch($validated);
+        return response()->json($result);
+    }
+
+    public function handleWebhookPipelines(Request $request): JsonResponse
+    {
+        $data = $request->input('pipelines');
+
+        $validator = Validator::make(['pipelines' => $data], [
+            'pipelines' => ['required', 'array'],
+            'pipelines.*.id' => ['required', 'integer'],
+            'pipelines.*.account_id' => ['required', 'integer'],
+            'pipelines.*.name' => ['required', 'string'],
+            'pipelines.*.sort' => ['required', 'integer'],
+            'pipelines.*.is_main' => ['required', 'boolean'],
+            'pipelines.*.is_unsorted_on' => ['required', 'boolean'],
+            'pipelines.*.is_archive' => ['required', 'boolean'],
+            'pipelines.*._embedded.statuses' => ['required', 'array'],
+            'pipelines.*._embedded.statuses.*.id' => ['required', 'integer'],
+            'pipelines.*._embedded.statuses.*.pipeline_id' => ['required', 'integer'],
+            'pipelines.*._embedded.statuses.*.name' => ['required', 'string'],
+            'pipelines.*._embedded.statuses.*.sort' => ['required', 'integer'],
+            'pipelines.*._embedded.statuses.*.type' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            Log::channel('amocrm')->warning('Validation failed', $validator->errors()->toArray());
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $result = $this->webhookService->handleWebhookPipelines($validator->validated()['pipelines']);
+        return response()->json($result);
+    }
+
+    public function handleWebhookLeadAdd(Request $request): JsonResponse
+    {
+        Log::channel('amocrm')->info('AmoCRM Webhook LeadAdd:', $request->toArray());
+
+        $accountId = $request->input('account.id');
+
+        $leads = $request->input('leads.add', []);
+
+        $validator = Validator::make(['leads' => $leads], [
+            'leads' => ['required', 'array'],
+            'leads.*.id' => ['required', 'numeric'],
+            'leads.*.pipeline_id' => ['required', 'numeric'],
+            'leads.*.status_id' => ['required', 'numeric'],
+        ]);
+
+        if ($validator->fails()) {
+            Log::channel('amocrm')->error('Validation failed', ['errors' => $validator->errors()->toArray()]);
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $result = $this->webhookService->handleWebhookLeadStatus($validator->validated()['leads'], $accountId);
+        return response()->json($result);
+    }
+
+    public function handleWebhookLeadStatus(Request $request): JsonResponse
+    {
+        Log::channel('amocrm')->info('AmoCRM Webhook LeadStatus:', $request->toArray());
+
+        $accountId = $request->input('account.id');
+
+        $leads = $request->input('leads.update', []);
+        if (empty($leads)) {
+            $leads = $request->input('leads.add', []);
+        }
+
+        $validator = Validator::make(['leads' => $leads], [
+            'leads' => ['required', 'array'],
+            'leads.*.id' => ['required', 'numeric'],
+            'leads.*.pipeline_id' => ['required', 'numeric'],
+            'leads.*.status_id' => ['required', 'numeric'],
+        ]);
+
+        if ($validator->fails()) {
+            Log::channel('amocrm')->error('Validation failed', ['errors' => $validator->errors()->toArray()]);
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $result = $this->webhookService->handleWebhookLeadStatus($validator->validated()['leads'], $accountId);
+        return response()->json($result);
+    }
+
 
     /**
      * Обработка входящего вебхука от канала amoCRM
@@ -102,9 +188,9 @@ class WebhookController extends Controller
     public function handleWebhookChannel(Request $request): JsonResponse
     {
         // Логирование всех входящих данных для отладки
-        Log::info('AmoCRM Webhook Channel Received:' .
-            json_encode($request->all(), JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
-        Log::info('before validated');
+        Log::channel('amocrm')->info('AmoCRM Webhook Channel Received:' .
+            json_encode($request->all(), JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+        Log::channel('amocrm')->info('before validated');
 
         // Ответ AmoCRM (обязательно для подтверждения получения вебхука)
         return response()->json(['status' => 'success', 'scope_id' => $request->scope_id]);
@@ -113,9 +199,9 @@ class WebhookController extends Controller
     public function handleWebhookWuzzap(Request $request): JsonResponse
     {
         // Логирование всех входящих данных для отладки
-        Log::info('AmoCRM Webhook Wuzzap Received:' .
+        Log::channel('amocrm')->info('AmoCRM Webhook Wuzzap Received:' .
             json_encode($request->all(), JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
-        Log::info('before validated');
+        Log::channel('amocrm')->info('before validated');
 
         // Валидация входящих данных (пример)
         $validated = $request->validate([
@@ -126,7 +212,7 @@ class WebhookController extends Controller
             'messages.0.chatType' => ['required', 'string'],
             'messages.0.status' => ['required', 'string'],
         ]);
-        Log::info('validated');
+        Log::channel('amocrm')->info('validated');
 
         $data = $validated['messages'][0];
         if ($data['status'] === 'inbound') {
@@ -140,7 +226,7 @@ class WebhookController extends Controller
             $message->reply_id = null;
             $message->save();
 
-            Log::info('save');
+            Log::channel('amocrm')->info('save');
             if ($message->origin === 'telegram') {
                 $message->saveAnswerAnalysis();
             }
@@ -152,96 +238,11 @@ class WebhookController extends Controller
     public function handleWebhookI2crm(Request $request): JsonResponse
     {
         // Логирование всех входящих данных для отладки
-        Log::info('AmoCRM Webhook I2crm Received:' .
+        Log::channel('amocrm')->info('AmoCRM Webhook I2crm Received:' .
             json_encode($request->all(), JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
-        Log::info('before validated');
+        Log::channel('amocrm')->info('before validated');
 
         // Ответ AmoCRM (обязательно для подтверждения получения вебхука)
         return response()->json(['status' => 'success']);
-    }
-
-    public function handleWebhookPluginActivate(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'account_id' => ['required', 'integer'],
-            'domain' => ['required', 'string'],
-        ]);
-
-        $record = AccountOAuth2::updateOrCreate(
-            ['domain' => $validated['domain']],
-            ['account_id' => $validated['account_id']]
-        );
-        $settings = ChatGPTSetting::createOrFirst(
-            ['account_id' => $validated['account_id']]
-        );
-        return response()->json(['status' => (!is_null($record) && !is_null($settings))]);
-    }
-
-    public function handleWebhookPluginStatus(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'domain' => ['required', 'string'],
-        ]);
-
-        $record = AccountOAuth2::query()
-            ->where('domain', $validated['domain'])
-            ->first();
-        if (empty($record)) {
-            $status = -1;
-        } elseif (empty($record->oauth2_code)) {
-            $status = 0;
-        } else {
-            $status = 1;
-        }
-        return response()->json(['status' => $status]);
-    }
-
-    public function handleWebhookBotStatus(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'domain' => ['required', 'string'],
-            'lead_id'   => ['required', 'integer'],
-        ]);
-
-        $record = UserChatThread::query()
-            ->where('domain', $validated['domain'])
-            ->where('lead_id', $validated['lead_id'])
-            ->first();
-        if (is_null($record)) {
-            $record = UserChatThread::create([
-                'domain' => $validated['domain'],
-                'lead_id' => $validated['lead_id'],
-                'status' => true,
-            ]);
-        }
-        return response()->json(['status' => $record->status]);
-    }
-
-    public function handleWebhookBotSwitch(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'domain' => ['required', 'string'],
-            'lead_id'   => ['required', 'integer'],
-        ]);
-
-        $record = UserChatThread::query()
-            ->where('domain', $validated['domain'])
-            ->where('lead_id', $validated['lead_id'])
-            ->first();
-        if (is_null($record)) {
-            $record = UserChatThread::create([
-                'domain' => $validated['domain'],
-                'lead_id' => $validated['lead_id'],
-                'status' => true,
-            ]);
-        }
-
-        $status = !$record->status;
-        UserChatThread::query()
-            ->where('domain', $validated['domain'])
-            ->where('lead_id', $validated['lead_id'])
-            ->update(['status' => $status]);
-
-        return response()->json(['status' => $status]);
     }
 }

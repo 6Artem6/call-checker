@@ -11,10 +11,9 @@ const form = useForm({
 
 const submit = async () => {
   try {
-    const res = await axios.post(route('payment.store'), {
+    const res = await axios.post(route('payment-store'), {
       amount: form.amount,
     });
-
     window.open(res.data.redirect_url, '_blank');
   } catch (e) {
     alert('Ошибка при создании платежа');

@@ -12,6 +12,7 @@ class AuthenticateByCookie
 {
     public function handle(Request $request, Closure $next)
     {
+        dd($request->headers->get('cookie', ''));
         $cookieName = config('session.cookie_token');
         $t = $request->cookie($cookieName);
 

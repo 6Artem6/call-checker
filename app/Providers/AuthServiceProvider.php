@@ -2,10 +2,7 @@
 
 namespace App\Providers;
 
-use App\Models\AccountUser;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
-use Laravel\Passport\Bridge\AccessTokenRepository;
 use Laravel\Passport\Passport;
 
 class AuthServiceProvider extends ServiceProvider

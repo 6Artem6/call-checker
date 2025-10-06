@@ -29,7 +29,7 @@ class InstructionRequest extends FormRequest
                 'regex:/^[а-яa-z0-9\s\,\.\:\;\!\@\#\%\(\)\[\]\-\+\=\*\?\'\"\/\\\\]+$/iu',
                 'unique:instruction,instruction_text,NULL,instruction_id,user_id,' . Auth::id() . ',theme_id,' . $this->theme_id
             ],
-            'theme_id' => 'required|integer',
+            'theme_id' => ['required', 'integer', 'exists:theme,theme_id'],
         ];
     }
 

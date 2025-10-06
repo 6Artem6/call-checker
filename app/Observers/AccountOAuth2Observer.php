@@ -2,7 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\AccountOAuth2;
+use App\Models\AiLead\Account\AccountOAuth2;
 use Illuminate\Support\Facades\Log;
 
 class AccountOAuth2Observer

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Invoice;
+use App\Models\AiLead\Payment\Invoice;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,15 +23,15 @@ class PaymentController extends Controller
         $client->setAuth(env('YOOKASSA_WEBHOOK_SHOP_ID'), env('YOOKASSA_WEBHOOK_SECRET'));
 
         $invoice = Invoice::create([
-            'account_id' => auth()->id(),
+            'account_id' => auth()->guard('api')->user()->oauth2->account_id,
             'amount' => $request->input('amount'),
-            'status' => 'pending',
+            'status' => Invoice::STATUS_PENDING,
             'description' => $request->input('description'),
             'invoice_id' => Str::uuid()->toString(),
         ]);
 
-        $email = $invoice->user->email ?? auth()->user()?->email ?? 'user@example.com';
-        $name = $invoice->user->name ?? auth()->user()?->name ?? 'Имя Клиента';
+        $email = $invoice->user->email ?? auth()->guard('api')->user()?->email ?? 'user@example.com';
+        $name = $invoice->user->name ?? auth()->guard('api')->user()?->name ?? 'Имя Клиента';
 
         $payment = $client->createPayment([
             'amount' => [
@@ -40,7 +40,7 @@ class PaymentController extends Controller
             ],
             'confirmation' => [
                 'type' => 'redirect',
-                'return_url' => route('payment.return', ['invoice_id' => $invoice->invoice_id]),
+                'return_url' => route('payment-return', ['invoice_id' => $invoice->invoice_id]),
             ],
             'capture' => true,
             'description' => 'Invoice #' . $invoice->id,

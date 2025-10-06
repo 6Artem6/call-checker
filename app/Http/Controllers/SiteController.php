@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use App\Models\{Request, Support, Theme, Instruction, File};
+use App\Models\Voice\{Request, Theme, Instruction, File};
+use App\Models\Support;
 use App\Http\Requests\{InstructionRequest, RequestRequest, SupportRequest};
 
 class SiteController extends Controller
@@ -22,9 +23,17 @@ class SiteController extends Controller
     public function index()
     {
         if (!Auth::check()) {
-            return redirect()->route('login');
+            return redirect()->route('show-index');
         }
         return Inertia::render('Site/Index');
+    }
+
+    public function showIndex()
+    {
+        $html = file_get_contents(resource_path('html/index.html'));
+
+        return response($html, 200)
+            ->header('Content-Type', 'text/html');
     }
 
     /**
@@ -38,6 +47,7 @@ class SiteController extends Controller
         if (!empty($theme_list)) {
             $model->theme_id = array_key_first($theme_list);
         }
+
         return Inertia::render('Site/RequestSend', [
             'model' => $model,
             'instructionModel' => $instructionModel,
@@ -152,9 +162,9 @@ class SiteController extends Controller
 
         // Создаём новую инструкцию
         $instruction = Instruction::create([
-            'instruction_text' => $data['instruction_text'],
+            'instruction_text' => (string)$data['instruction_text'],
             'user_id' => Auth::id(),
-            'theme_id' => $data['theme_id'],
+            'theme_id' => (int)$data['theme_id'],
         ]);
 
         return response()->json([
@@ -169,7 +179,7 @@ class SiteController extends Controller
      */
     public function instructionList(HttpRequest $request): JsonResponse
     {
-        $themeId = $request->input('id');
+        $themeId = (int)$request->input('id');
         $data = [];
 
         if ($themeId) {
@@ -197,6 +207,13 @@ class SiteController extends Controller
 
         return response()->download($filePath, $fileName, [
             'Content-Type' => Storage::mimeType($filePath),
+        ]);
+    }
+
+    public function doc()
+    {
+        return Inertia::render('Site/Doc', [
+            'appUrl' => config('app.url'),
         ]);
     }
 }

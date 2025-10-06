@@ -23,13 +23,13 @@ class RequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'request_id' => 'unique:requests',
+            'request_id' => 'unique:request',
             'request_datetime' => 'date_format:Y-m-d H:i:s',
-            'theme_id' => 'exists:themes,theme_id',
-            'user_id' => 'exists:users,user_id',
-            'status_id' => 'exists:request_file_statuses,status_id',
-            'upload_files' => 'array|max:10',
-            'upload_files.*' => 'file|mimes:mp3,wav|max:1024',
+            'theme_id' => 'exists:theme,theme_id',
+            'user_id' => 'exists:user,user_id',
+            'status_id' => 'exists:request_file_status,status_id',
+            'upload_files' => ['array', 'max:10'],
+            'upload_files.*' => ['file', 'mimes:mp3,wav', 'max:10240'], // Ограничения на файлы
         ];
     }
 }

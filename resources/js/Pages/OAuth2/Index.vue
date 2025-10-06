@@ -14,7 +14,7 @@ message.value = page.props.message;
     <Head title="Страница подключения плагина" />
 
     <div class="w-full p-6">
-      <h1 class="text-2xl text-white font-semibold mb-4">{{ message }}</h1>
+      <h1 class="text-2xl text-black dark:text-white font-semibold mb-4">{{ message }}</h1>
     </div>
   </GuestLayout>
 </template>
