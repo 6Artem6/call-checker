@@ -1,66 +1,133 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Call Checker
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Call Checker — веб-приложение для анализа звонков пользователей и ведения специализированных диалогов с покупателями в CRM с автоматическим продвижением по воронкам продаж.
 
-## About Laravel
+Проект сочетает сбор и обработку голосовых и событийных данных звонков, визуализацию и аналитику, а также инструменты для автоматических и ручных диалогов агентов/ботов внутри CRM.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Ключевые возможности
+- **Интеграция с amoCRM:** Автоматическое ведение и обновление сделок, передача контекста диалогов и истории коммуникаций.
+- **AI-анализ интентов:** Контекстный анализ сообщений и выявление намерений клиентов для сценариев общения.
+- **Автоматизация воронок:** Перевод сделок по этапам воронки продаж на основе триггеров и результатов аналитики.
+- **Асинхронные события:** Приём и надежная обработка входящих вебхуков внешних сервисов через очереди (Redis/Queues).
+- **История & Мониторинг:** Полный аудит шагов воронки, веб-интерфейс для настройки правил и модерации диалогов.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Технологии
+- **Бэкенд:** PHP 8.2+, Laravel 12 (REST API, Queues, Webhooks)
+- **Интеграции:** amoCRM API, Webhooks
+- **Фронтенд:** Vue.js, HTML, Blade
+- **База данных & Кеш:** MySQL, Redis (очереди и кеширование)
+- **Инфраструктура:** Docker, Docker Compose, Nginx
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Требования
+- PHP 8.2+
+- Composer 2.x
+- Node.js 18+ и npm
+- PostgreSQL / MySQL & Redis
+- Docker & Docker Compose
 
-## Learning Laravel
+## Быстрый старт (локально)
+1. Клонировать репозиторий:
+   git clone https://github.com/6Artem6/call-checker.git
+   cd call-checker
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+2. Установить зависимости:
+   composer install
+   npm install
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+3. Создать файл окружения и настроить его:
+   cp .env.example .env
+   Отредактируйте `.env` — подключение к БД, ключи и т.д.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+4. Выполнить миграции и сиды (если проект на Laravel):
+   php artisan migrate --seed
 
-## Laravel Sponsors
+5. Собрать фронтенд-ассеты:
+   npm run dev
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+6. Запустить локальный сервер:
+   php artisan serve
+   Открыть: http://localhost:8000
 
-### Premium Partners
+## Быстрый старт (Docker)
+1. Создать/отредактировать .env / .env.docker
+2. Запустить контейнеры:
+   docker-compose up -d --build
+3. Установить зависимости и выполнить миграции внутри контейнера:
+   docker-compose exec app composer install
+   docker-compose exec app php artisan migrate --seed
+   docker-compose exec node npm install && npm run production
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+## Переменные окружения (пример)
+- APP_NAME=CallChecker
+- APP_ENV=local
+- APP_KEY=base64:...
+- APP_URL=http://localhost
+- DB_CONNECTION=mysql
+- DB_HOST=127.0.0.1
+- DB_PORT=3306
+- DB_DATABASE=call_checker
+- DB_USERNAME=user
+- DB_PASSWORD=secret
+- TELEPHONY_PROVIDER_API_KEY=...
+- CRM_API_URL=...
+- CRM_API_KEY=...
 
-## Contributing
+Добавьте переменные для интеграции с телефонными провайдерами и CRM.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## API — примеры
+Приём события звонка (пример):
+POST /api/calls
+Content-Type: application/json
+Body:
+{
+  "call_id": "uuid-or-string",
+  "caller": "+71234567890",
+  "callee": "+79876543210",
+  "status": "completed",
+  "started_at": "2026-08-14T12:00:00Z",
+  "duration": 120,
+  "recording_url": "https://...",
+  "metadata": {...}
+}
 
-## Code of Conduct
+Пример curl:
+curl -X POST "http://localhost/api/calls" \
+  -H "Content-Type: application/json" \
+  -d '{"caller":"+71234567890","callee":"+79876543210","started_at":"2026-08-14T12:00:00Z","duration":120}'
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Webhook для интеграции с CRM:
+- События: lead_created, lead_moved, call_received, call_result
+- Приложение должно уметь обрабатывать входящие webhook и обновлять состояние воронки.
 
-## Security Vulnerabilities
+## Интерфейс и работа с воронками
+- Настройка воронок продаж и шагов (Admin UI).
+- Правила переходов: вручную, по результатам звонка, по меткам качества разговора.
+- История переходов и возможность отката/комментариев для оператора.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Тестирование
+- PHP: composer test или vendor/bin/phpunit
+- JS: npm test
+Рекомендуется добавление CI (GitHub Actions) для автоматического запуска тестов при PR.
 
-## License
+## Логирование и мониторинг
+- Логи: storage/logs/ (или указанный в конфигурации)
+- Рекомендации: интеграция Sentry или аналогов для мониторинга ошибок, метрики Prometheus/Grafana для метрик.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Развёртывание
+- VPS: nginx + php-fpm, настройка SSL, очередей (supervisor)
+- Docker: использовать Dockerfile и docker-compose или Kubernetes для масштабирования
+- CI/CD: настроить сборку, тесты и развертывание из main ветки
+
+## Вклад
+1. Форкнуть репозиторий
+2. Создать ветку feature/имя
+3. Сделать изменения и покрыть тестами
+4. Открыть Pull Request с описанием изменений и инструкцией по тестированию
+
+## Roadmap / Возможные улучшения
+- Добавление графовых сценариев валидации диалогов (LLM Guardrails).
+- Расширение модуля аналитики с выгрузкой отчетов в XLSX/PDF.
+- Поддержка дополнительный каналов (Telegram/WhatsApp Bot API) помимо телефонии.
+
+## Лицензия
+Исходный код доступен для ознакомления, локального запуска, проведения Code Review и тестирования. Коммерческое использование, продажа или использование в коммерческих продуктах без согласования с автором запрещены. См. файл [LICENSE](LICENSE) для деталей.
